@@ -1,3 +1,5 @@
+import contextlib
+import io
 import json
 import os
 import sys
@@ -12,6 +14,9 @@ import shutil, sys
 src, out = sys.argv[1], sys.argv[2]
 if "broken" in src:
     print("conversion error: broken book", file=sys.stderr)
+    sys.exit(1)
+if "locked" in src:
+    print("Traceback (most recent call last): calibre.ebooks.DRMError: locked.epub", file=sys.stderr)
     sys.exit(1)
 shutil.copyfile(src, out)
 """
@@ -96,6 +101,20 @@ class ConvertTest(unittest.TestCase):
         st = path.stat()
         path.write_text(content)
         os.utime(path, ns=(st.st_atime_ns, st.st_mtime_ns + 10**9))
+
+    def test_drm_protected_book_logged_as_one_line(self):
+        self.book("locked.epub")
+        self.book("good.epub")
+        with self.assertLogs_stdout() as out:
+            self.run_with()
+        self.assertIn("Skipped (DRM-protected): locked.epub", out.getvalue())
+        self.assertNotIn("Traceback", out.getvalue())
+        self.assertIn("Run finished: converted 1, failed 0, DRM-protected 1", out.getvalue())
+        self.assertEqual(self.state()["failed"]["locked.azw3"]["error"], "DRM-protected")
+        self.assertEqual(convert.find_jobs(self.config(), self.state()), [])
+
+    def assertLogs_stdout(self):
+        return contextlib.redirect_stdout(io.StringIO())
 
     def test_custom_ignore_files(self):
         self.book("a/.nomedia")

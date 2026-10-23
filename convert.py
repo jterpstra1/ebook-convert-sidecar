@@ -163,6 +163,10 @@ def save_state(cfg, state):
     tmp.replace(cfg.state_dir / "state.json")
 
 
+class DRMProtected(RuntimeError):
+    """Calibre refuses to convert the book because it is DRM-protected."""
+
+
 def convert(cfg, source, target, fmt):
     """Convert in a scratch dir, then move into the library under a hidden name library apps
     ignore and rename it into place, so their watchers only ever see a complete file."""
@@ -171,7 +175,10 @@ def convert(cfg, source, target, fmt):
         cmd = [*cfg.ebook_convert, str(source), str(out), *cfg.extra_args]
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=cfg.timeout)
         if result.returncode != 0 or not out.exists() or out.stat().st_size == 0:
-            tail = (result.stderr or result.stdout).strip().splitlines()[-5:]
+            output = result.stderr or result.stdout
+            if "DRMError" in output:
+                raise DRMProtected("DRM-protected")
+            tail = output.strip().splitlines()[-5:]
             raise RuntimeError(f"ebook-convert exited {result.returncode}: " + " | ".join(tail))
         part = part_path(target)
         # Never follow a pre-existing part file or symlink: anyone who can write to
@@ -215,9 +222,9 @@ def run_once(cfg):
     jobs = find_jobs(cfg, state)
     if not cfg.dry_run:
         save_state(cfg, state)
-    done = errors = 0
+    done = errors = drm = 0
     for source, target, fmt, is_update in jobs:
-        if cfg.max_per_run and done + errors >= cfg.max_per_run:
+        if cfg.max_per_run and done + errors + drm >= cfg.max_per_run:
             log(f"Reached MAX_PER_RUN={cfg.max_per_run}, rest waits for the next run")
             break
         target_rel = rel(cfg, target)
@@ -239,10 +246,14 @@ def run_once(cfg):
             convert(cfg, source, target, fmt)
             target_fp = fingerprint(target)
         except (RuntimeError, subprocess.TimeoutExpired, OSError) as e:
-            errors += 1
             state["failed"][target_rel] = {"error": str(e)[:500], "source": source_fp}
             save_state(cfg, state)
-            log(f"FAILED {target_rel}: {e}")
+            if isinstance(e, DRMProtected):
+                drm += 1
+                log(f"Skipped (DRM-protected): {rel(cfg, source)}")
+            else:
+                errors += 1
+                log(f"FAILED {target_rel}: {e}")
             continue
         state["converted"][target_rel] = {"source": source_fp, "target": target_fp}
         state["failed"].pop(target_rel, None)
@@ -250,7 +261,7 @@ def run_once(cfg):
         done += 1
         log(f"{'Updated' if is_update else 'Created'} {target_rel} in {time.monotonic() - started:.0f}s")
     verb = "would convert" if cfg.dry_run else "converted"
-    log(f"Run finished: {verb} {done}, failed {errors}")
+    log(f"Run finished: {verb} {done}, failed {errors}" + (f", DRM-protected {drm}" if drm else ""))
 
 
 def install_plugins(cfg):
