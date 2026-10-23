@@ -295,7 +295,7 @@ def main():
     # PID 1 in a container ignores SIGTERM unless handled; exiting via SystemExit
     # also makes subprocess.run kill a running ebook-convert.
     signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
-    os.umask(int(os.environ.get("UMASK", "000"), 8))
+    os.umask(int(os.environ.get("UMASK", "002"), 8))
     drop_privileges()
     cfg = Config.from_env()
     install_plugins(cfg)

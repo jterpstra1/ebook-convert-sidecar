@@ -59,7 +59,7 @@ format of the existing book, with no changes to the app. Tested with
 | `EXTRA_ARGS` | | Extra `ebook-convert` arguments, e.g. `--output-profile kindle_pw3` |
 | `CONVERT_TIMEOUT` | `600` | Seconds before one conversion is given up |
 | `PUID` / `PGID` | `99` / `100` | Owner of the files it writes. Use the same as your library app |
-| `UMASK` | `000` | Unraid default, so files are readable/writable for the share like everything else |
+| `UMASK` | `002` | Files are readable by everyone, writable by owner and group. Set `000` if other users on the share must be able to change them too |
 | `IGNORE_FILES` | `.ignore` | Comma-separated file names; a folder containing one is skipped |
 | `TZ` | | Timezone for log timestamps |
 
